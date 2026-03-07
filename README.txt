@@ -1,5 +1,3 @@
-# vapt
-for website vapt test
 =========================================================
 Fortify VAPT Framework v3.0
 Internal Offensive Security Automation Tool

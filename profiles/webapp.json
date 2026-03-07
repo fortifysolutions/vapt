@@ -1,0 +1,9 @@
+{
+    "modules": [
+        "web_crawler",
+        "param_discovery",
+        "xss_scan",
+        "sqli_scan",
+        "template_scan"
+    ]
+}
