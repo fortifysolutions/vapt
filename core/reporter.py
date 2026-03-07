@@ -11,7 +11,7 @@ from core.config import OUTPUT_DIR
 def initialize_report(target):
     return {
         "target": target,
-        "timestamp": str(datetime.datetime.now()),
+        "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "modules": {},
         "summary": {}
     }
@@ -36,36 +36,40 @@ def calculate_risk_score(data):
     return score
 
 
-def save_json_report(data, filename="report.json"):
-    if not os.path.exists(OUTPUT_DIR):
-        os.makedirs(OUTPUT_DIR)
-
-        # 1. Extract and sanitize the target name for the OS file system
+def _build_safe_report_stem(data):
     raw_target = data.get("target", "unknown_target")
-        # Strip http/https and replace illegal characters (like slashes or colons) with underscores
     safe_target = re.sub(r'^https?://', '', raw_target)
     safe_target = re.sub(r'[\\/*?:"<>|]', '_', safe_target)
 
-        # 2. Extract and format the timestamp
-        # Converts "2026-03-03 09:24:55.586114" to "20260303_092455"
-    raw_time = data.get("timestamp", "unknown_time")
-    safe_time = raw_time.replace("-", "").replace(":", "").replace(" ", "_").split(".")[0]
+    # Keep timestamp readable while safe for filenames.
+    raw_time = data.get("timestamp", datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+    safe_time = raw_time.replace(":", "-").replace(" ", "_")
 
-        # 3. Construct the dynamic filename
-    filename = f"{safe_target}_{safe_time}.json"
+    return f"{safe_target}_{safe_time}"
+
+
+def save_json_report(data, filename=None):
+    if not os.path.exists(OUTPUT_DIR):
+        os.makedirs(OUTPUT_DIR)
+
+    if not filename:
+        filename = f"{_build_safe_report_stem(data)}.json"
 
     path = os.path.join(OUTPUT_DIR, filename)
 
     with open(path, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=4)
 
-    print(f"[✓] JSON report dynamically saved to {path}")
+    print(f"[✓] JSON report saved to {path}")
 
 
 
-def save_html_report(data, filename="report.html"):
+def save_html_report(data, filename=None):
     if not os.path.exists(OUTPUT_DIR):
         os.makedirs(OUTPUT_DIR)
+
+    if not filename:
+        filename = f"{_build_safe_report_stem(data)}.html"
 
     risk_score = calculate_risk_score(data)
 
