@@ -25,9 +25,18 @@ def extract_nuclei_severity(output):
     return severities
 
 
-def run(target, verbose=False):
+def run(target, verbose=False, config=None):
     # Defense-in-depth against command injection
     safe_target = shlex.quote(target)
+    cfg = config or {}
+    cookie = (cfg.get("cookie") or "").strip()
+    auth_header = (cfg.get("auth_header") or "").strip()
+
+    nuclei_cmd = f"nuclei -u {safe_target} -ni"
+    if cookie:
+        nuclei_cmd += f" -H {shlex.quote(f'Cookie: {cookie}')}"
+    if auth_header:
+        nuclei_cmd += f" -H {shlex.quote(f'Authorization: {auth_header}')}"
 
     # Run Nikto and Nuclei concurrently to drastically reduce module execution time
     with concurrent.futures.ThreadPoolExecutor() as executor:
@@ -41,7 +50,7 @@ def run(target, verbose=False):
         # -ni (no-interact): Prevents Nuclei from prompting for updates/inputs
         future_nuclei = executor.submit(
             run_command,
-            f"nuclei -u {safe_target} -ni",
+            nuclei_cmd,
             verbose
         )
 

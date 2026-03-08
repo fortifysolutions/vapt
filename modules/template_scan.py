@@ -24,11 +24,17 @@ def run(target, verbose=False, config=None):
     cfg = config or {}
     tags = cfg.get("nuclei_tags", "")
     timeout = int(cfg.get("template_timeout", 360))
+    cookie = (cfg.get("cookie") or "").strip()
+    auth_header = (cfg.get("auth_header") or "").strip()
 
     safe_target = shlex.quote(target)
     cmd = f"nuclei -u {safe_target} -silent -ni"
     if tags:
         cmd += f" -tags {shlex.quote(tags)}"
+    if cookie:
+        cmd += f" -H {shlex.quote(f'Cookie: {cookie}')}"
+    if auth_header:
+        cmd += f" -H {shlex.quote(f'Authorization: {auth_header}')}"
 
     output, code = run_command(cmd, verbose, timeout=timeout)
     severity_counts = extract_nuclei_severity(output)

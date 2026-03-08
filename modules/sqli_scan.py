@@ -31,9 +31,15 @@ def run(target, verbose=False, config=None):
     risk = int(cfg.get("sqli_risk", 1))
     level = int(cfg.get("sqli_level", 2))
     timeout = int(cfg.get("sqli_timeout", 420))
+    cookie = (cfg.get("cookie") or "").strip()
+    auth_header = (cfg.get("auth_header") or "").strip()
 
     safe_target = shlex.quote(target)
     cmd = f"sqlmap -u {safe_target} --batch --risk={risk} --level={level} --smart"
+    if cookie:
+        cmd += f" --cookie {shlex.quote(cookie)}"
+    if auth_header:
+        cmd += f" --headers {shlex.quote(f'Authorization: {auth_header}')}"
     output, code = run_command(cmd, verbose, timeout=timeout)
 
     lower = output.lower()

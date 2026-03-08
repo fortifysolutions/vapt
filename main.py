@@ -112,6 +112,8 @@ def main():
     parser.add_argument("--sqli-risk", type=int, default=1)
     parser.add_argument("--sqli-level", type=int, default=2)
     parser.add_argument("--nuclei-tags", default="")
+    parser.add_argument("--cookie", default="", help="Session cookie for authenticated scanning (example: session=abc123)")
+    parser.add_argument("--auth-header", default="", help="Authorization header value (example: Bearer <token>)")
 
     args = parser.parse_args()
 
@@ -149,6 +151,8 @@ def main():
         "sqli_risk": args.sqli_risk,
         "sqli_level": args.sqli_level,
         "nuclei_tags": args.nuclei_tags,
+        "cookie": args.cookie,
+        "auth_header": args.auth_header,
     }
 
     for module_name in modules_to_run:

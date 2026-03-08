@@ -2,13 +2,23 @@
 
 import shlex
 import subprocess
+import re
 from core.config import DEFAULT_TIMEOUT
 from core.logger import log
 
 
+def _sanitize_command_for_log(command):
+    redacted = command
+    redacted = re.sub(r"(Cookie:\s*)([^'\"]+)", r"\1<redacted>", redacted, flags=re.IGNORECASE)
+    redacted = re.sub(r"(Authorization:\s*)([^'\"]+)", r"\1<redacted>", redacted, flags=re.IGNORECASE)
+    redacted = re.sub(r"(--cookie\s+)(\S+)", r"\1<redacted>", redacted, flags=re.IGNORECASE)
+    redacted = re.sub(r"(--headers\s+)(\S+)", r"\1<redacted>", redacted, flags=re.IGNORECASE)
+    return redacted
+
+
 def run_command(command, verbose=False, timeout=DEFAULT_TIMEOUT):
     """Run command safely with timeout and merged stdout/stderr."""
-    log(f"Executing: {command}")
+    log(f"Executing: {_sanitize_command_for_log(command)}")
 
     try:
         cmd = ["stdbuf", "-oL"] + shlex.split(command)

@@ -144,6 +144,12 @@ Web Tuning Flags:
     --sqli-risk
     --sqli-level
     --nuclei-tags
+    --cookie
+    --auth-header
+
+Authenticated Web Scan Example:
+
+    python3 main.py --target https://example.com --profile regression_web --cookie "sessionid=abc123" --auth-header "Bearer eyJ..."
 
 
 =========================================================

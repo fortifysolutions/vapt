@@ -24,9 +24,15 @@ def _extract_evidence(output):
 def run(target, verbose=False, config=None):
     cfg = config or {}
     timeout = int(cfg.get("xss_timeout", 300))
+    cookie = (cfg.get("cookie") or "").strip()
+    auth_header = (cfg.get("auth_header") or "").strip()
 
     safe_target = shlex.quote(target)
     cmd = f"dalfox url {safe_target} --skip-bav --no-color"
+    if cookie:
+        cmd += f" --cookie {shlex.quote(cookie)}"
+    if auth_header:
+        cmd += f" -H {shlex.quote(f'Authorization: {auth_header}')}"
     output, code = run_command(cmd, verbose, timeout=timeout)
 
     evidence = _extract_evidence(output)
