@@ -119,6 +119,10 @@ With Profile Selection:
 
     python3 main.py --target example.com --profile standard
 
+Web Regression Profile:
+
+    python3 main.py --target https://example.com --profile regression_web --max-web-targets 50 --xss-max-targets 50 --sqli-max-targets 30
+
 Deep Scan (Full Modules):
 
     python3 main.py --target example.com --profile deep
@@ -130,6 +134,16 @@ Verbose Mode:
 Auto Install Missing Tools:
 
     python3 main.py --target example.com --auto-install
+
+Web Tuning Flags:
+
+    --crawl-depth
+    --max-web-targets
+    --xss-max-targets
+    --sqli-max-targets
+    --sqli-risk
+    --sqli-level
+    --nuclei-tags
 
 
 =========================================================
@@ -163,6 +177,14 @@ output/report.json
 
 output/report.html
     → Human-readable professional report
+
+output/artifacts/<run_id>/
+    → Intermediate pipeline files:
+      crawler_urls.txt
+      parameter_urls.txt
+      xss_targets.txt
+      sqli_targets.txt
+      template_targets.txt
 
 JSON report contains:
 • Raw tool outputs

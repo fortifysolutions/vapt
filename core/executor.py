@@ -1,51 +1,36 @@
 # core/executor.py
 
-import subprocess
 import shlex
+import subprocess
 from core.config import DEFAULT_TIMEOUT
 from core.logger import log
 
 
 def run_command(command, verbose=False, timeout=DEFAULT_TIMEOUT):
+    """Run command safely with timeout and merged stdout/stderr."""
     log(f"Executing: {command}")
 
     try:
-        # 1. Safely parse the command string into a list of arguments
-        command_list = shlex.split(command)
-
-        # 2. Prepend the stdbuf command elements safely to the list
-        full_command_list = ["stdbuf", "-oL"] + command_list
-
-        process = subprocess.Popen(
-            full_command_list,
-            shell=False,  # <-- CRITICAL FIX: OS Command Injection neutralized
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
+        cmd = ["stdbuf", "-oL"] + shlex.split(command)
+        proc = subprocess.run(
+            cmd,
+            capture_output=True,
             text=True,
-            bufsize=1  # Ensures line-buffering for real-time verbose output
+            timeout=timeout,
+            check=False,
+            shell=False,
         )
 
-        output = ""
+        output = (proc.stdout or "") + (proc.stderr or "")
+        if verbose and output:
+            print(output)
 
-        # Read output line-by-line for the verbose flag
-        for line in iter(process.stdout.readline, ''):
-            if not line:
-                break
-            output += line
-            if verbose:
-                print(line.strip())
-
-        # Enforce the timeout
-        process.wait(timeout=timeout)
-
-        return output, process.returncode
+        return output, proc.returncode
 
     except subprocess.TimeoutExpired:
-        process.kill()
-        process.wait()  # Clean up the zombie process after killing it
         log(f"Command timed out: {command}")
-        return "[!] Command timed out.", 1
+        return "[!] Command timed out.", 124
 
-    except Exception as e:
-        log(f"Execution error ({command}): {str(e)}")
-        return str(e), 1
+    except Exception as exc:
+        log(f"Execution error ({command}): {str(exc)}")
+        return str(exc), 1

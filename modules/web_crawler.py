@@ -1,32 +1,34 @@
 import shlex
 
 from core.executor import run_command
+from core.web_utils import dedupe_normalized_urls, extract_urls
 
 
-def run(target, verbose=False):
+def run(target, verbose=False, config=None):
+    cfg = config or {}
+    depth = int(cfg.get("crawl_depth", 2))
+    timeout = int(cfg.get("crawl_timeout", 180))
+
     safe_target = shlex.quote(target)
-    output, code = run_command(f"katana -u {safe_target} -silent", verbose)
+    cmd = f"katana -u {safe_target} -silent -d {depth}"
+    output, code = run_command(cmd, verbose, timeout=timeout)
 
-    urls = []
-    for line in output.splitlines():
-        line = line.strip()
-        if line.startswith("http://") or line.startswith("https://"):
-            urls.append(line)
+    urls = dedupe_normalized_urls(extract_urls(output))
 
-    # Preserve order while de-duplicating
-    deduped = list(dict.fromkeys(urls))
+    status = "ok"
+    if code == 124:
+        status = "timeout"
+    elif code != 0:
+        status = "tool_error"
+    elif not urls:
+        status = "no_targets"
 
-    result = {
-        "raw": {
-            "katana": output
-        },
+    return {
+        "status": status,
+        "raw": {"katana": output},
         "parsed": {
-            "urls": deduped,
-            "url_count": len(deduped)
-        }
+            "urls": urls,
+            "url_count": len(urls),
+            "exit_code": code,
+        },
     }
-
-    if code != 0:
-        result["error"] = "katana execution failed"
-
-    return result

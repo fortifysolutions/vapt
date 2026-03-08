@@ -3,25 +3,58 @@ import shlex
 from core.executor import run_command
 
 
-def run(target, verbose=False):
+SQLI_MARKERS = [
+    "is vulnerable",
+    "parameter",
+    "appears to be injectable",
+    "sql injection",
+]
+
+
+NO_SQLI_MARKERS = [
+    "all tested parameters do not appear to be injectable",
+    "not injectable",
+]
+
+
+def _extract_sqli_evidence(output):
+    evidence = []
+    for line in output.splitlines():
+        low = line.lower()
+        if any(marker in low for marker in SQLI_MARKERS):
+            evidence.append(line.strip())
+    return evidence
+
+
+def run(target, verbose=False, config=None):
+    cfg = config or {}
+    risk = int(cfg.get("sqli_risk", 1))
+    level = int(cfg.get("sqli_level", 2))
+    timeout = int(cfg.get("sqli_timeout", 420))
+
     safe_target = shlex.quote(target)
-    cmd = f"sqlmap -u {safe_target} --batch --crawl=1 --level=2 --smart"
-    output, code = run_command(cmd, verbose)
+    cmd = f"sqlmap -u {safe_target} --batch --risk={risk} --level={level} --smart"
+    output, code = run_command(cmd, verbose, timeout=timeout)
 
-    output_lower = output.lower()
-    likely_sqli = "sql injection" in output_lower and ("vulnerable" in output_lower or "is vulnerable" in output_lower)
+    lower = output.lower()
+    evidence = _extract_sqli_evidence(output)
+    no_injection = any(x in lower for x in NO_SQLI_MARKERS)
+    likely_sqli = len(evidence) > 0 and not no_injection
 
-    result = {
-        "raw": {
-            "sqlmap": output
-        },
+    status = "ok"
+    if code == 124:
+        status = "timeout"
+    elif code != 0 and not likely_sqli:
+        status = "tool_error"
+
+    return {
+        "status": status,
+        "raw": {"sqlmap": output},
         "parsed": {
             "target": target,
-            "possible_sqli": likely_sqli
-        }
+            "finding_count": len(evidence) if likely_sqli else 0,
+            "possible_sqli": likely_sqli,
+            "evidence_lines": evidence[:20],
+            "exit_code": code,
+        },
     }
-
-    if code != 0:
-        result["error"] = "sqlmap execution failed"
-
-    return result
