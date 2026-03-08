@@ -1,9 +1,9 @@
 # core/reporter.py
 
-import json
 import datetime
-import os
 import html
+import json
+import os
 import re
 from core.config import OUTPUT_DIR
 
@@ -13,13 +13,12 @@ def initialize_report(target):
         "target": target,
         "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "modules": {},
-        "summary": {}
+        "summary": {},
     }
 
 
 def calculate_risk_score(data):
     score = 0
-    # Uses .get() chaining to safely check values even if the module wasn't run
     vuln = data.get("modules", {}).get("vuln", {}).get("parsed", {})
     ssl = data.get("modules", {}).get("ssl", {}).get("parsed", {})
     headers = data.get("modules", {}).get("header_analysis", {}).get("parsed", {})
@@ -38,19 +37,60 @@ def calculate_risk_score(data):
 
 def _build_safe_report_stem(data):
     raw_target = data.get("target", "unknown_target")
-    safe_target = re.sub(r'^https?://', '', raw_target)
-    safe_target = re.sub(r'[\\/*?:"<>|]', '_', safe_target)
+    safe_target = re.sub(r"^https?://", "", raw_target)
+    safe_target = re.sub(r"[\\/*?:\"<>|]", "_", safe_target)
 
-    # Keep timestamp readable while safe for filenames.
     raw_time = data.get("timestamp", datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
     safe_time = raw_time.replace(":", "-").replace(" ", "_")
 
     return f"{safe_target}_{safe_time}"
 
 
+def _collect_findings(data):
+    findings = []
+    status_counts = {"ok": 0, "no_targets": 0, "tool_error": 0, "timeout": 0, "parse_error": 0, "error": 0}
+
+    for module_name, content in data.get("modules", {}).items():
+        if not isinstance(content, dict):
+            status_counts["parse_error"] += 1
+            continue
+
+        status = content.get("status", "ok")
+        status_counts[status] = status_counts.get(status, 0) + 1
+
+        parsed = content.get("parsed", {})
+        if isinstance(parsed, dict):
+            if parsed.get("possible_findings"):
+                findings.append({"module": module_name, "type": "xss", "count": parsed.get("finding_count", 0)})
+            if parsed.get("possible_sqli"):
+                findings.append({"module": module_name, "type": "sqli", "count": parsed.get("finding_count", 0)})
+            if parsed.get("finding_count", 0) and module_name == "template_scan":
+                findings.append({"module": module_name, "type": "template", "count": parsed.get("finding_count", 0)})
+
+        raw = content.get("raw", {})
+        if isinstance(raw, dict) and "batch" in raw:
+            for target, result in raw.get("batch", {}).items():
+                if not isinstance(result, dict):
+                    continue
+                p = result.get("parsed", {})
+                if not isinstance(p, dict):
+                    continue
+                if p.get("possible_findings"):
+                    findings.append({"module": module_name, "target": target, "type": "xss", "count": p.get("finding_count", 0)})
+                if p.get("possible_sqli"):
+                    findings.append({"module": module_name, "target": target, "type": "sqli", "count": p.get("finding_count", 0)})
+                if module_name == "template_scan" and p.get("finding_count", 0) > 0:
+                    findings.append({"module": module_name, "target": target, "type": "template", "count": p.get("finding_count", 0)})
+
+    data["summary"]["status_counts"] = status_counts
+    data["summary"]["findings"] = findings
+
+
 def save_json_report(data, filename=None):
     if not os.path.exists(OUTPUT_DIR):
         os.makedirs(OUTPUT_DIR)
+
+    _collect_findings(data)
 
     if not filename:
         filename = f"{_build_safe_report_stem(data)}.json"
@@ -63,7 +103,6 @@ def save_json_report(data, filename=None):
     print(f"[✓] JSON report saved to {path}")
 
 
-
 def save_html_report(data, filename=None):
     if not os.path.exists(OUTPUT_DIR):
         os.makedirs(OUTPUT_DIR)
@@ -73,18 +112,19 @@ def save_html_report(data, filename=None):
 
     risk_score = calculate_risk_score(data)
 
-    # Dynamic Risk Badging
     if risk_score >= 8:
-        risk_color = "#e74c3c"  # Red
+        risk_color = "#e74c3c"
         risk_level = "HIGH"
     elif risk_score >= 4:
-        risk_color = "#f39c12"  # Orange
+        risk_color = "#f39c12"
         risk_level = "MEDIUM"
     else:
-        risk_color = "#27ae60"  # Green
+        risk_color = "#27ae60"
         risk_level = "LOW"
 
-    # Executive Dashboard Template for Fortify Solutions
+    status_counts = data.get("summary", {}).get("status_counts", {})
+    findings = data.get("summary", {}).get("findings", [])
+
     html_content = f"""
     <!DOCTYPE html>
     <html lang="en">
@@ -92,76 +132,37 @@ def save_html_report(data, filename=None):
         <meta charset="UTF-8">
         <title>Fortify Solutions | VAPT Report</title>
         <style>
-            :root {{
-                --primary: #2c3e50;
-                --bg: #f8f9fa;
-                --card-bg: #ffffff;
-                --text: #333333;
-                --border: #e0e0e0;
-            }}
-            body {{ font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 40px; }}
+            body {{ font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f8f9fa; color: #333; margin: 0; padding: 40px; }}
             .container {{ max-width: 1100px; margin: 0 auto; }}
-            .header {{ background: var(--primary); color: white; padding: 30px; border-radius: 8px 8px 0 0; display: flex; justify-content: space-between; align-items: center; }}
-            .header h1 {{ margin: 0; font-size: 24px; font-weight: 600; letter-spacing: 1px; }}
-            .summary-bar {{ background: var(--card-bg); padding: 20px 30px; border-radius: 0 0 8px 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); display: flex; justify-content: space-between; border: 1px solid var(--border); border-top: none; margin-bottom: 30px; }}
-            .metric {{ display: flex; flex-direction: column; }}
-            .metric-title {{ font-size: 12px; text-transform: uppercase; color: #7f8c8d; font-weight: 600; margin-bottom: 5px; }}
-            .metric-value {{ font-size: 18px; font-weight: bold; color: var(--primary); }}
-            .risk-badge {{ background: {risk_color}; color: white; padding: 5px 12px; border-radius: 4px; font-size: 14px; font-weight: bold; }}
-
-            .module-card {{ background: var(--card-bg); border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); border: 1px solid var(--border); margin-bottom: 25px; overflow: hidden; }}
-            .module-header {{ background: #ecf0f1; padding: 15px 20px; border-bottom: 1px solid var(--border); font-size: 16px; font-weight: bold; color: var(--primary); text-transform: uppercase; }}
-            .module-body {{ padding: 20px; }}
-
-            .parsed-data pre {{ background: #f4f6f7; padding: 15px; border-radius: 6px; font-family: 'Courier New', Courier, monospace; font-size: 14px; color: #d35400; overflow-x: auto; border: 1px solid #e2e6e8; }}
-
-            details {{ margin-top: 15px; background: #fafafa; padding: 10px; border: 1px solid #ddd; border-radius: 4px; }}
-            summary {{ font-weight: bold; cursor: pointer; color: #3498db; outline: none; }}
-            details pre {{ background: #2c3e50; color: #ecf0f1; padding: 15px; border-radius: 6px; font-size: 12px; overflow-x: auto; margin-top: 10px; }}
+            .header {{ background: #2c3e50; color: white; padding: 30px; border-radius: 8px; }}
+            .block {{ background: #fff; margin-top: 20px; border: 1px solid #ddd; border-radius: 8px; padding: 16px; }}
+            .risk {{ background: {risk_color}; color: white; padding: 4px 10px; border-radius: 4px; }}
+            pre {{ white-space: pre-wrap; background: #f4f6f7; border: 1px solid #e2e6e8; padding: 10px; border-radius: 6px; }}
         </style>
     </head>
     <body>
         <div class="container">
             <div class="header">
                 <h1>FORTIFY SOLUTIONS | VAPT ASSESSMENT</h1>
+                <p><b>Target:</b> {html.escape(data.get('target', 'Unknown'))}</p>
+                <p><b>Timestamp:</b> {html.escape(data.get('timestamp', 'Unknown'))}</p>
+                <p><b>Risk:</b> <span class="risk">{risk_score} - {risk_level}</span></p>
             </div>
-            <div class="summary-bar">
-                <div class="metric">
-                    <span class="metric-title">Target Infrastructure</span>
-                    <span class="metric-value">{html.escape(data.get("target", "Unknown"))}</span>
-                </div>
-                <div class="metric">
-                    <span class="metric-title">Scan Timestamp</span>
-                    <span class="metric-value">{html.escape(data.get("timestamp", "Unknown"))}</span>
-                </div>
-                <div class="metric">
-                    <span class="metric-title">Calculated Risk Score</span>
-                    <span class="metric-value risk-badge">{risk_score} - {risk_level}</span>
-                </div>
+            <div class="block">
+                <h3>Execution Status</h3>
+                <pre>{html.escape(json.dumps(status_counts, indent=2))}</pre>
+                <h3>Findings Summary</h3>
+                <pre>{html.escape(json.dumps(findings, indent=2))}</pre>
             </div>
     """
 
     for module, content in data.get("modules", {}).items():
         html_content += f"""
-            <div class="module-card">
-                <div class="module-header">{html.escape(module.upper())}</div>
-                <div class="module-body">
+            <div class="block">
+                <h3>{html.escape(module.upper())}</h3>
+                <pre>{html.escape(json.dumps(content, indent=2)[:12000])}</pre>
+            </div>
         """
-
-        if "parsed" in content:
-            # Safely serialize and escape JSON blocks
-            parsed_json = json.dumps(content['parsed'], indent=4)
-            html_content += f'<div class="parsed-data"><pre>{html.escape(parsed_json)}</pre></div>'
-
-        if "raw" in content:
-            # Safely escape raw terminal output
-            html_content += "<details><summary>View Raw Technical Output</summary>"
-            for tool_name, tool_output in content["raw"].items():
-                html_content += f"<h4 style='margin-bottom: 5px; color: #7f8c8d;'>{html.escape(tool_name.upper())}</h4>"
-                html_content += f"<pre>{html.escape(str(tool_output))}</pre>"
-            html_content += "</details>"
-
-        html_content += "</div></div>"
 
     html_content += "</div></body></html>"
 

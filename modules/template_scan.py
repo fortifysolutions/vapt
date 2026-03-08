@@ -10,7 +10,7 @@ def extract_nuclei_severity(output):
         "high": 0,
         "medium": 0,
         "low": 0,
-        "info": 0
+        "info": 0,
     }
 
     output_lower = output.lower()
@@ -20,21 +20,33 @@ def extract_nuclei_severity(output):
     return severities
 
 
-def run(target, verbose=False):
-    safe_target = shlex.quote(target)
-    output, code = run_command(f"nuclei -u {safe_target} -silent -ni", verbose)
+def run(target, verbose=False, config=None):
+    cfg = config or {}
+    tags = cfg.get("nuclei_tags", "")
+    timeout = int(cfg.get("template_timeout", 360))
 
-    result = {
-        "raw": {
-            "nuclei": output
-        },
+    safe_target = shlex.quote(target)
+    cmd = f"nuclei -u {safe_target} -silent -ni"
+    if tags:
+        cmd += f" -tags {shlex.quote(tags)}"
+
+    output, code = run_command(cmd, verbose, timeout=timeout)
+    severity_counts = extract_nuclei_severity(output)
+    finding_count = sum(severity_counts.values())
+
+    status = "ok"
+    if code == 124:
+        status = "timeout"
+    elif code != 0 and finding_count == 0:
+        status = "tool_error"
+
+    return {
+        "status": status,
+        "raw": {"nuclei": output},
         "parsed": {
             "target": target,
-            "severity_counts": extract_nuclei_severity(output)
-        }
+            "severity_counts": severity_counts,
+            "finding_count": finding_count,
+            "exit_code": code,
+        },
     }
-
-    if code != 0:
-        result["error"] = "nuclei execution failed"
-
-    return result
